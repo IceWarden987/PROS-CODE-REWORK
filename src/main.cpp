@@ -12,7 +12,7 @@ pros::MotorGroup left({-18, -19, -20}, pros::MotorCartridge::blue);    // Create
 pros::MotorGroup right({11, 13, 14}, pros::MotorCartridge::blue);
 pros::Motor intake(2, pros::MotorCartridge::blue);
 pros::adi::DigitalOut mogo(DIGITAL_SENSOR_PORT);
-pros::Imu imu(13);
+pros::Imu imu(3);
 /**
  * A callback function for LLEMU's center button.
  *
