@@ -2,13 +2,15 @@
 #include "pros/abstract_motor.hpp"
 #include "pros/adi.hpp"
 #include "pros/imu.hpp"
+#include "pros/misc.h"
 #include "pros/motors.hpp"
+#include <cmath>
 #define DIGITAL_SENSOR_PORT 'D'
 
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::MotorGroup left({-18, -19, -20}, pros::MotorCartridge::blue);    // Creates a motor group with forwards ports 1 & 3 and reversed port 2
 pros::MotorGroup right({11, 13, 14}, pros::MotorCartridge::blue);
-pros::Motor intake({2}, pros::MotorCartridge::blue);
+pros::Motor intake(2, pros::MotorCartridge::blue);
 pros::adi::DigitalOut mogo(DIGITAL_SENSOR_PORT);
 pros::Imu imu(13);
 /**
@@ -85,21 +87,33 @@ void autonomous() {}
  * task, not resume it from where it left off.
  */
 void opcontrol() {
-	pros::Controller master(pros::E_CONTROLLER_MASTER);
-	pros::MotorGroup left_mg({1, -2, 3});    // Creates a motor group with forwards ports 1 & 3 and reversed port 2
-	pros::MotorGroup right_mg({-4, 5, -6});  // Creates a motor group with forwards port 5 and reversed ports 4 & 6
-
 
 	while (true) {
 		pros::lcd::print(0, "%d %d %d", (pros::lcd::read_buttons() & LCD_BTN_LEFT) >> 2,
 		                 (pros::lcd::read_buttons() & LCD_BTN_CENTER) >> 1,
 		                 (pros::lcd::read_buttons() & LCD_BTN_RIGHT) >> 0);  // Prints status of the emulated screen LCDs
 
-		// Arcade control scheme
-		int dir = master.get_analog(ANALOG_LEFT_Y);    // Gets amount forward/backward from left joystick
-		int turn = master.get_analog(ANALOG_RIGHT_X);  // Gets the turn left/right from right joystick
-		left_mg.move(dir - turn);                      // Sets left motor voltage
-		right_mg.move(dir + turn);                     // Sets right motor voltage
+		// Tank control scheme
+		int left_volt = controller.get_analog(ANALOG_LEFT_Y);    // Gets amount forward/backward from left joystick
+		int right_volt = controller.get_analog(ANALOG_RIGHT_Y);  // Gets the turn left/right from right joystick
+		left.move(left_volt);                      // Sets left motor voltage
+		right.move(right_volt);                     // Sets right motor voltage
+		if (controller.get_digital(DIGITAL_R1)) { 				// intake motor
+			intake.move_velocity(500);
+		}
+		else if (controller.get_digital(DIGITAL_R2)) {
+			intake.move_velocity(-500);
+		}
+		else {
+			intake.move_velocity(0);
+		}
+
+		if (controller.get_digital(DIGITAL_L1)) {
+			mogo.set_value(true);
+		}
+		if (controller.get_digital(DIGITAL_L2)) {
+			mogo.set_value(false);
+		}
 		pros::delay(20);                               // Run for 20 ms then update
 	}
 }
