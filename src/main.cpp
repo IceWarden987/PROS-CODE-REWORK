@@ -5,6 +5,8 @@
 #include "pros/misc.h"
 #include "pros/motors.hpp"
 #include <cmath>
+#include "lemlib/api.hpp" // IWYU pragma: keep
+#include "pros/rtos.hpp"
 #define DIGITAL_SENSOR_PORT 'D'
 
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
@@ -12,7 +14,58 @@ pros::MotorGroup left({-18, -19, -20}, pros::MotorCartridge::blue);    // Create
 pros::MotorGroup right({11, 13, 14}, pros::MotorCartridge::blue);
 pros::Motor intake(2, pros::MotorCartridge::blue);
 pros::adi::DigitalOut mogo(DIGITAL_SENSOR_PORT);
-pros::Imu imu(3);
+pros::Imu imu(1);
+lemlib::Drivetrain drivetrain(
+	&left, // left motor group
+	&right, // right motor group
+	12, // 12 inch track width
+	lemlib::Omniwheel::NEW_325, // using new 3.25" omnis
+	360, // drivetrain rpm is 360
+	2 // horizontal drift is 2 (for now)
+);
+// create a v5 rotation sensor on port 1
+pros::Rotation horizontal_encoder(4);
+// create a v5 rotation sensor on port 1
+pros::Rotation vertical_encoder(5);
+lemlib::TrackingWheel horizontal_tracking_wheel(&horizontal_encoder, lemlib::Omniwheel::NEW_275, -5.75);
+lemlib::TrackingWheel vertical_tracking_wheel(&vertical_encoder, lemlib::Omniwheel::NEW_275, -2.5);
+lemlib::OdomSensors sensors(
+	nullptr, // vertical tracking wheel 1, set to null
+	nullptr, // vertical tracking wheel 2, set to nullptr as we are using IMEs
+	nullptr, // horizontal tracking wheel 1
+	nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
+	&imu // inertial sensor
+);
+// lateral PID controller
+lemlib::ControllerSettings lateral_controller(
+	10, // proportional gain (kP)
+	0, // integral gain (kI)
+	3, // derivative gain (kD)
+    3, // anti windup
+    1, // small error range, in inches
+    100, // small error range timeout, in milliseconds
+    3, // large error range, in inches
+    500, // large error range timeout, in milliseconds
+	20 // maximum acceleration (slew)
+);
+// angular PID controller
+lemlib::ControllerSettings angular_controller(
+	3, // proportional gain (kP)
+	0, // integral gain (kI)
+	11, // derivative gain (kD)
+	3, // anti windup
+	1, // small error range, in degrees
+	100, // small error range timeout, in milliseconds
+	3, // large error range, in degrees
+	500, // large error range timeout, in milliseconds
+	0 // maximum acceleration (slew)
+);
+lemlib::Chassis chassis(
+	drivetrain, // drivetrain settings
+	lateral_controller, // lateral PID settings
+	angular_controller, // angular PID settings
+	sensors // odometry sensors
+);
 /**
  * A callback function for LLEMU's center button.
  *
@@ -36,10 +89,19 @@ void on_center_button() {
  * to keep execution time for this mode under a few seconds.
  */
 void initialize() {
-	pros::lcd::initialize();
-	pros::lcd::set_text(1, "Hello PROS User!");
-
-	pros::lcd::register_btn1_cb(on_center_button);
+    pros::lcd::initialize(); // initialize brain screen
+    chassis.calibrate(); // calibrate sensors
+    // print position to brain screen
+    pros::Task screen_task([&]() {
+        while (true) {
+            // print robot location to the brain screen
+            pros::lcd::print(1, "X: %f", chassis.getPose().x); // x
+            pros::lcd::print(2, "Y: %f", chassis.getPose().y); // y
+            pros::lcd::print(3, "Theta: %f", chassis.getPose().theta); // heading
+            // delay to save resources
+            pros::delay(20);
+        }
+    });
 }
 
 /**
@@ -113,6 +175,36 @@ void opcontrol() {
 		}
 		if (controller.get_digital(DIGITAL_L2)) {
 			mogo.set_value(false);
+		}
+		if (controller.get_digital(DIGITAL_A)) {
+			// set position to x:0, y:0, heading:0
+			chassis.setPose(0, 0, 0);
+			intake.move_velocity(500);
+			mogo.set_value(false);
+			pros::delay(1500);
+			intake.move_velocity(0);
+			chassis.moveToPoint(0, 15, 1500);
+			chassis.turnToHeading(90, 1500);
+			chassis.moveToPoint(-34, 15, 6500, {.forwards = false});
+			mogo.set_value(true);
+			pros::delay(1500);
+			mogo.set_value(false);
+			pros::delay(2000);
+			chassis.turnToHeading(-90, 1500);
+			pros::delay(1500);
+			intake.move_velocity(500);
+			chassis.moveToPoint(-80, 15, 1500);
+			pros::delay(3500);
+			intake.move_velocity(0);
+			chassis.turnToHeading(0, 1500);
+			pros::delay(1500);
+			chassis.moveToPoint(-96, 0, 1500, {.forwards = false});
+			pros::delay(1500);
+			mogo.set_value(true);
+
+			
+
+
 		}
 		pros::delay(20);                               // Run for 20 ms then update
 	}
